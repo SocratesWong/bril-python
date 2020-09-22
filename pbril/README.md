@@ -3,7 +3,8 @@ PBril: A Python Based Bril Optimizer
 
 
 
-### Dead Code Elimiation
+Dead Code Elimiation
+-----------------
 Execution Example:
 PATH=$PATH:`yarn global bin` bril2json < examples/test/tdce/reassign.bril | python3 pbril/complier.py | bril2txt
 Recived Output:
@@ -20,9 +21,10 @@ Input:
 		}
 As it is seen that the a variable that is being reused is removed as it is dead code.  With other examples, if the variable is not being used in the end of the function DCE will also elimiate it.
 
-###LVN Immplemtation
+LVN Immplemtation
+-----------------
 LVN is immplemented and it is able to preform all three of the operations.  Should work with the tricker examples.
-####Constant Folding
+###Constant Folding
 Execution Example:
 		PATH=$PATH:`yarn global bin` bril2json < examples/test/tdce/combo.bril | python3 pbril/complier.py | bril2txt
 Recived Output:
@@ -42,7 +44,7 @@ Input:
 		  print d;
 		}
 The complier is able to elemiate any constant at compile time.  Instead of having to add the numbers at run time, it replaced it by loading in d directly
-####Algebraic Identities (Disable updateinit)
+###Algebraic Identities (Disable updateinit)
 Execution Example:
 		PATH=$PATH:`yarn global bin` bril2json < examples/test/lvn/commute.bril | python3 pbril/complier.py | bril2txt
 Recived Output:
