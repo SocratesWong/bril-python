@@ -39,7 +39,7 @@ LVN Immplemtation
 LVN is immplemented and it is able to preform all three of the operations.  Should work with the tricker examples.
 
 
-###Constant Folding
+### Constant Folding
 
 
 Execution Example:
@@ -69,7 +69,7 @@ Input:
 The complier is able to elemiate any constant at compile time.  Instead of having to add the numbers at run time, it replaced it by loading in d directly
 
 
-###Algebraic Identities (Disable updateinit)
+### Algebraic Identities (Disable updateinit)
 
 
 Execution Example:
@@ -103,7 +103,7 @@ Input:
 The complier understands community laws of addition and mutiplication, and is able to treat tem as the same numbering.  
 
 
-###Copy propagation
+### Copy propagation
 
 
 Execution Example:
