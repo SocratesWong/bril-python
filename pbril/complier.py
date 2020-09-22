@@ -199,6 +199,7 @@ class lvn_entery:
 			});
 		
 	def updateinit(self, manger, instr):
+		#return
 		#val=tmp;
 		if instr['op'] in ("add", "mul", 'sub','div','gt','lt','ge','le'):
 			#sys.stderr.write("KEYS dump"+str(manger.lookuptable.keys())+"\n");
