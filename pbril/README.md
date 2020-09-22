@@ -5,35 +5,56 @@ PBril: A Python Based Bril Optimizer
 
 Dead Code Elimiation
 -----------------
+
+
 Execution Example:
-PATH=$PATH:`yarn global bin` bril2json < examples/test/tdce/reassign.bril | python3 pbril/complier.py | bril2txt
+
+
+		PATH=$PATH:`yarn global bin` bril2json < examples/test/tdce/reassign.bril | python3 pbril/complier.py | bril2txt
+
+
 Recived Output:
+
+
 		@main {
 		  a: int = const 42;
 		  print a;
 		}
+		
 Input:
+
 		cat  examples/test/tdce/reassign.bril
 		@main {
 		  a: int = const 100;
 		  a: int = const 42;
 		  print a;
 		}
+		
 As it is seen that the a variable that is being reused is removed as it is dead code.  With other examples, if the variable is not being used in the end of the function DCE will also elimiate it.
 
 LVN Immplemtation
 -----------------
+
+
 LVN is immplemented and it is able to preform all three of the operations.  Should work with the tricker examples.
+
+
 ###Constant Folding
+
+
 Execution Example:
+
 		PATH=$PATH:`yarn global bin` bril2json < examples/test/tdce/combo.bril | python3 pbril/complier.py | bril2txt
+		
 Recived Output:
+
 		@main {
 		  d: int = const 4;
 		  print d;
 		}
 
 Input:
+
 		cat examples/test/tdce/combo.bril
 		@main {
 		  a: int = const 1;
@@ -43,11 +64,19 @@ Input:
 		  d: int = add a b;
 		  print d;
 		}
+		
+		
 The complier is able to elemiate any constant at compile time.  Instead of having to add the numbers at run time, it replaced it by loading in d directly
+
+
 ###Algebraic Identities (Disable updateinit)
+
+
 Execution Example:
+
 		PATH=$PATH:`yarn global bin` bril2json < examples/test/lvn/commute.bril | python3 pbril/complier.py | bril2txt
 Recived Output:
+
 		@main {
 		  a: int = const 4;
 		  b: int = const 2;
@@ -57,6 +86,7 @@ Recived Output:
 		}
 
 Input:
+
 		cat examples/test/lvn/commute.bril
 		# ARGS: -c
 		# (a + b) * (b + a)
@@ -68,13 +98,20 @@ Input:
 		  prod: int = mul sum1 sum2;
 		  print prod;
 		}
+		
+		
 The complier understands community laws of addition and mutiplication, and is able to treat tem as the same numbering.  
 
 
-####Copy propagation
+###Copy propagation
+
+
 Execution Example:
+
 		PATH=$PATH:`yarn global bin` bril2json < examples/test/lvn/idchain.bril | python3 pbril/complier.py | bril2txt
+		
 Recived Output:
+
 		@main {
 		  x: int = const 4;
 		  copy3: int = id x;
@@ -83,6 +120,7 @@ Recived Output:
 
 
 Input:
+
 		cat examples/test/lvn/idchain.bril
 		@main {
 		  x: int = const 4;
