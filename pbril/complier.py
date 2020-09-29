@@ -1,6 +1,7 @@
 import sys
 import json
 import itertools
+from collections import OrderedDict
 
 #Imported code from sampsyo/bril.
 TERMINATORS = 'br', 'jmp', 'ret'
@@ -347,28 +348,157 @@ def lvn(fun):
 	sys.stderr.write("LVN pass done Running DCE to clean up: \n");
 	#return changes == 0;
 	return dce(fun)
+def union(list):
+	out=set()
+	for i in list:
+		out.update(i)
+	return out;
+def definedtrans(block,inval):
+	gen , kill, used= gku(block);
+	return inval.union(gen);
+def livetrans(block,inval):
+	gen , kill, used= gku(block);
+	return used.union(inval-gen);
+def gku(block):
+	gen =set();
+	kill= set()
+	used= set();
+	for i in block:
+		for arg in i.get('args',[]):
+			if arg not in gen:
+				used.add(arg)
+		if 'dest' in i:
+			if i['dest'] not in used:
+				kill.add(i['dest'])
+			gen.add(i['dest'])
+		
+	return (gen, kill,used);
+def succ(instr,next):
+	#sys.stderr.write("Succ "+str(instr)+"\n");
+	if instr['op'] in ('jmp','br'):
+		return instr['labels'];
+	if instr['op'] in ('ret',):
+		return [];
+	if next is None:
+		return [];
+	return [next];
+def appendifexist(dic,name,obj):
+	#if not obj:
+	#	return
+	try:
+		dic[name].append(obj)
+	except:
+		dic[name]=[obj];
+class fun_block():
+	def __init__(self,block):
+		self.bct=0;
+		self.dict=OrderedDict();
+		for bk in block:
+			try:
+			
+				self.dict[bk[0]['label']]=bk[1:]
+			except:
+				self.dict['genlabel.'+str(self.bct)]=bk
+				self.bct=self.bct+1;
+	def slover( self,foward,merger, transfer):
+		start = list(self.dict.keys())[ 0 if foward else -1 ]  
+		if foward:
+			in_ed,out_ed= self.edge()
+			#sys.stderr.write("in_ed values"+str(in_ed)+"\n");
+		else:
+			out_ed, in_ed = self.edge()
+		inp ={start:set()} 
+		out ={bk: set() for bk in self.dict}
+		#sys.stderr.write("Keys are "+ str(self.dict.keys())+"\n");
+		stack = list(self.dict.keys())
+		while stack:
+			cur = stack.pop();
+			#sys.stderr.write("DEBUG:in_end:"+str(in_ed)+"\nout_ed"+str(out_ed)+"\nout:"+str(out)+"\n");
+			#sys.stderr.write("cur:"+str(cur)+"\n");
+			inp[cur]=merger(out[p] for p in in_ed[cur])
+			out_temp = transfer(self.dict[cur],inp[cur])
+			if out[cur] is not out_temp:
+				stack+=out_ed[cur]
+			out[cur]=out_temp
+		return (inp,out) if foward else (out,inp)
+		
+	def edge(self):
+		pred={name:[] for name in self.dict};
+		suc={name:[] for name in self.dict};
+		#sys.stderr.write(str(self.dict)+"\n");
+		for ct,value in enumerate(self.dict.items()):
+			name,block =value;
+			try:
+				next, _ = self.dict.items()[ct+1]
+			except:
+				next= None;
+			#if next:
+			#	print("next is "+ next+"\n")
+			#else:
+			#	print("next is none"+"\n")
+			for s in succ(block[-1],next):
+				#sys.stderr.write("Adding value"+s+"\n");
+				appendifexist(suc,name,s);
+				appendifexist(pred,s,name);
+		return pred,suc;
+#Imported code from sampsyo/bril.	
+def fmt(val):
+    """Guess a good way to format a data flow value. (Works for sets and
+    dicts, at least.)
+    """
+    if isinstance(val, set):
+        if val:
+            return ', '.join(v for v in sorted(val))
+        else:
+            return '∅'
+    elif isinstance(val, dict):
+        if val:
+            return ', '.join('{}: {}'.format(k, v)
+                             for k, v in sorted(val.items()))
+        else:
+            return '∅'
+    else:
+        return str(val)
+#End of Imported Code.
 
-#Imported code from sampsyo/bril.
+
 def opt():
 	# Code structure adopted from examples, orgrinally located from sampsyo/bril.  
 	bril = json.load(sys.stdin)
+	if False:
+		for fun in bril['functions']:
+			done=False;
+			passct=0;
+			while not done:
+				done= True;
+				passct=passct+1;
+				sys.stderr.write("**********Function Pass "+str(passct)+"**********\n");
+				done= done and dce(fun);
+				done= done and lvn(fun);
+				#sys.stderr.write(str(done))
+	# DF
+	sys.stderr.write("DF :\n")
+	for fun in bril['functions']:		
+		fb=fun_block(form_blocks(fun["instrs"]));
+		#defined
+		sys.stderr.write("Defined :\n")
+		in_,out=fb.slover(True,union,definedtrans)
+		for block in fb.dict:
+		    sys.stderr.write('{}:\n'.format(block))
+		    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
+		    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
+		sys.stderr.write("Liveness :\n")
+		in_,out=fb.slover(False,union,livetrans)
+		for block in fb.dict:
+		    sys.stderr.write('{}:\n'.format(block))
+		    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
+		    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
 	
-	for fun in bril['functions']:
-		done=False;
-		passct=0;
-		while not done:
-			done= True;
-			passct=passct+1;
-			sys.stderr.write("**********Function Pass "+str(passct)+"**********\n");
-			done= done and dce(fun);
-			done= done and lvn(fun);
-			#sys.stderr.write(str(done))
-			
 	json.dump(bril, sys.stdout,indent=2, sort_keys=True)
 
 
 
 
-#End of Imported Code.
+
 if __name__ == '__main__':
 	opt()

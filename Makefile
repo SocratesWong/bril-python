@@ -9,6 +9,7 @@ TESTS := test/parse/*.bril \
 
 .PHONY: test
 test:
+	PATH=$$PATH:`yarn global bin`;
 	turnt $(TURNTARGS) $(TESTS)
 
 .PHONY: book
