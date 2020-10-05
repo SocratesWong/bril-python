@@ -135,6 +135,7 @@ const argCounts: {[key in bril.OpCode]: number | null} = {
   store: 2,
   load: 1,
   ptradd: 2,
+  phi: null,
 };
 
 type Pointer = {
@@ -295,6 +296,8 @@ type State = {
   readonly heap: Heap<Value>,
   readonly funcs: readonly bril.Function[],
   icount: bigint,
+  curlabel: string | null,
+  lastlabel: string | null,
 }
 
 /**
@@ -336,6 +339,8 @@ function evalCall(instr: bril.Operation, state: State): Action {
     heap: state.heap,
     funcs: state.funcs,
     icount: state.icount,
+    lastlabel: null,
+    curlabel: null,
   }
   let retVal = evalFunc(func, newState);
   state.icount = newState.icount;
@@ -635,6 +640,35 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
     return NEXT;
   }
 
+  case "phi": {
+    let labels = instr.labels || [];
+    let args = instr.args || [];
+    if (labels.length != args.length) {
+      throw error(`phi node has unequal numbers of labels and args`);
+    }
+    if (!state.lastlabel) {
+      throw error(`phi node executed with no last label`);
+    }
+    let idx = labels.indexOf(state.lastlabel);
+    if (idx === -1) {
+      // Last label not handled. Leave uninitialized.
+      state.env.delete(instr.dest);
+    } else {
+      // Copy the right argument (including an undefined one).
+      if (!instr.args || idx >= instr.args.length) {
+        throw error(`phi node needed at least ${idx+1} arguments`);
+      }
+      let src = instr.args[idx];
+      let val = state.env.get(src);
+      if (val === undefined) {
+        state.env.delete(instr.dest);
+      } else {
+        state.env.set(instr.dest, val);
+      }
+    }
+    return NEXT;
+  }
+
   }
   unreachable(instr);
   throw error(`unhandled opcode ${(instr as any).op}`);
@@ -644,6 +678,7 @@ function evalFunc(func: bril.Function, state: State): ReturnValue {
   for (let i = 0; i < func.instrs.length; ++i) {
     let line = func.instrs[i];
     if ('op' in line) {
+      // Run an instruction.
       let action = evalInstr(line, state);
 
       if ('label' in action) {
@@ -651,6 +686,7 @@ function evalFunc(func: bril.Function, state: State): ReturnValue {
         for (i = 0; i < func.instrs.length; ++i) {
           let sLine = func.instrs[i];
           if ('label' in sLine && sLine.label === action.label) {
+            --i;  // Execute the label next.
             break;
           }
         }
@@ -660,6 +696,10 @@ function evalFunc(func: bril.Function, state: State): ReturnValue {
       } else if ('end' in action) {
         return action.end;
       }
+    } else if ('label' in line) {
+      // Update CFG tracking for SSA phi nodes.
+      state.lastlabel = state.curlabel;
+      state.curlabel = line.label;
     }
   }
 
@@ -726,6 +766,8 @@ function evalProg(prog: bril.Program) {
     heap,
     env: newEnv,
     icount: BigInt(0),
+    lastlabel: null,
+    curlabel: null,
   }
   evalFunc(main, state);
 
