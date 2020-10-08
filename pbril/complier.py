@@ -353,6 +353,14 @@ def union(list):
 	for i in list:
 		out.update(i)
 	return out;
+def intersect(list):
+    if not list:
+        return set();
+    #sys.stderr.write("Intersecting:"+str(list)+"\n");
+    out=set(list[0]);
+    for i in list:
+        out=set.intersection(out,i)
+    return out;
 def definedtrans(block,inval):
 	gen , kill, used= gku(block);
 	return inval.union(gen);
@@ -390,16 +398,29 @@ def appendifexist(dic,name,obj):
 	except:
 		dic[name]=[obj];
 class fun_block():
-	def __init__(self,block):
+	def __init__(self,fun):
+		#sys.stderr.write("Fun are "+ str(fun)+"\n");
 		self.bct=0;
 		self.dict=OrderedDict();
-		for bk in block:
+		wbdict={};
+		block=form_blocks(fun["instrs"])
+		#sys.stderr.write("block are "+ str(block)+"\n");
+		blocks = list(block);
+		for x,bk in enumerate(blocks):
 			try:
 			
 				self.dict[bk[0]['label']]=bk[1:]
 			except:
+				
 				self.dict['genlabel.'+str(self.bct)]=bk
+				wbdict[x] = 'genlabel.'+str(self.bct)
+				#bk.insert(0,{'label':'genlabel.'+str(self.bct)})
 				self.bct=self.bct+1;
+		for x, val in wbdict.items():
+			blocks[x].insert(0,{'label': str(val)})
+		fun["instrs"]=flatten(blocks)
+		#sys.stderr.write("Dicts are "+ str(dict(self.dict))+"\n");
+		#block[:]=fb
 	def slover( self,foward,merger, transfer):
 		start = list(self.dict.keys())[ 0 if foward else -1 ]  
 		if foward:
@@ -417,9 +438,10 @@ class fun_block():
 			#sys.stderr.write("cur:"+str(cur)+"\n");
 			inp[cur]=merger(out[p] for p in in_ed[cur])
 			out_temp = transfer(self.dict[cur],inp[cur])
-			if out[cur] is not out_temp:
+			if out[cur] != out_temp:
 				stack+=out_ed[cur]
 			out[cur]=out_temp
+			
 		return (inp,out) if foward else (out,inp)
 		
 	def edge(self):
@@ -441,6 +463,110 @@ class fun_block():
 				appendifexist(suc,name,s);
 				appendifexist(pred,s,name);
 		return pred,suc;
+	def edgelist(self):
+		pass
+		
+	def dom(self):
+		
+		pred, suc = self.edge();
+		dom ={}
+		tdom={}
+		#sys.stderr.write("Pred list:"+str(pred)+"\n");
+		#sys.stderr.write("Suc list:"+str(suc)+"\n");
+		if True:
+		#for ct,valuet in enumerate(self.dict.items()):
+		#	sys.stderr.write("Working on:"+str(valuet[0])+"\n");
+			done = False
+			dom={}
+			for value1 in self.dict.items():
+				name,block =value1;
+				dom[name]=set([name]);
+				dom[name]=set(self.dict.keys());
+			#namet,block =valuet;
+			#dom[namet]=set(self.dict.keys());
+			while not done:
+				done = True;
+				for value in reversed(self.dict.items()):
+					name,block =value;
+					newdom= set([name])
+					dlist= [];
+					for pd in pred[name]:
+						dlist.append(dom[pd])
+					list = intersect(dlist);
+					newdom.update(list);
+					done = done & (dom[name] == newdom);
+					dom[name]=newdom;
+			#tdom[namet]=newdom;
+
+		return dom;
+	def strict_dom(self):
+		doms=self.dom();
+		for name, li in doms.items():
+			li.remove(name);
+		return doms;
+	
+	def forntier_dom(self):
+		doms=self.dom();
+		sdom=self.strict_dom();
+		pred,suc = self.edge();
+		don_i=map_inv(doms);
+		fdoms={}
+		ds=set()
+		for key in self.dict.keys():
+			fdoms[key]=set()
+		#for B in self.dict.keys():
+		#	for A in self.dict.keys():
+		#		pres= set()
+		#		pres.update(pred[B]);
+		#		prec= pres;
+		#		done = False;
+				#while not done:
+				#	done = True
+				#	pres= set()
+				#	pres.update(prec);
+					#for x in prec:
+						#sys.stderr.write("Adding x to prec:"+str(set(pred[x]))+"\n");
+						#if not (set(pred[x])):
+					#	pres.update(set(pred[x]))
+					#if pres!=prec:
+						#sys.stderr.write("Comp pres:"+str(pres)+"\n");
+						#sys.stderr.write("Comp prec:"+str(prec)+"\n");
+					#	done = False
+		#			prec=pres
+		#		for pre in prec:
+		#			if (A not in doms[pre]) and (A in doms[B]) :
+		#				fdoms[B].add(A);
+		#				sys.stderr.write("A:"+A+" B:"+B+" pre:"+pre+"\n");
+		
+		#for A in self.dict.keys():
+		#	for su in self.dict.keys():
+		#		#sucs = suc[B]
+		#		B_s = pred[su];
+		#		for B in B_s:
+		#			if A in doms[B] and A not in doms[su]:
+		#				fdoms[B].add(A);
+		#				sys.stderr.write("A:"+A+" B:"+B+" su:"+su+"\n");
+		for A in doms:
+			ds=set()
+			for dd in don_i[A]	:
+				ds.update(suc[dd])
+			for dt in ds:
+				if dt not in don_i[A] or dt== A:
+					fdoms[A].add(dt)			
+		
+				
+			
+		return fdoms
+	#def SSA(self):
+	#	fontier=self.forntier_dom()
+		
+
+def map_inv(inv):
+    out = {key: [] for key in inv}
+    for tar, intt in inv.items():
+        for ink in intt:
+            out[ink].append(tar)
+    return out
 #Imported code from sampsyo/bril.	
 def fmt(val):
     """Guess a good way to format a data flow value. (Works for sets and
@@ -462,6 +588,130 @@ def fmt(val):
 #End of Imported Code.
 
 
+def to_ssa(fun, livein, liveout,fdom, p,s):
+	done= False;
+	modified = False;
+	blocks = list(form_blocks(fun['instrs']))
+	changes =0;
+	blockvaldict={}
+	valdict={}
+	phidict={}
+	for block in blocks:
+		name=block[0]['label'];
+		phidict[name]=[];
+		blockvaldict[name]={};
+	for bkc, block in enumerate(blocks):
+		name=block[0]['label'];
+		if not fdom[name]:
+			sys.stderr.write("p["+name+"] is "+ str(p[name])+"\n")
+			if p[name]:
+				#predname= p[name][0];
+				blockvaldict[name]=dict(blockvaldict[p[name][0]])
+		else:
+			sys.stderr.write("creating phi for "+name+"\n");
+			for a in livein[name]:
+				sys.stderr.write("\t for "+a+"\n");
+				varlist=[];
+				labellist=[];
+			
+					
+				for ss in p[name]:
+					labellist.append(ss);
+				
+				if a in valdict:
+					valdict[a]=a+"."+str(changes)
+					blockvaldict[name][a]=a+"."+str(changes);
+					changes=changes+1;
+				else:
+					valdict[a]=a;#+"."+str(changes);
+					blockvaldict[name][a]=a;#"."+str(changes);
+					#changes=changes+1;
+				phiset=(a,varlist,labellist,blockvaldict[name][a])
+				phidict[name].append(phiset);
+		for i, inst in enumerate(block):
+		
+			for x,var in enumerate(inst.get('args', [])):
+				#update name
+				if var in blockvaldict[name]:
+					blocks[bkc][i]['args'][x]=blockvaldict[name][var]
+				else:
+					valdict[var]=var;
+					blockvaldict[name][var]=var;
+					
+				
+			if 'dest' in inst:
+				a= inst['dest']
+				if a in valdict:
+					valdict[a]=a+"."+str(changes)
+					blockvaldict[name][a]=a+"."+str(changes);
+					changes=changes+1;
+					blocks[bkc][i]['dest']=blockvaldict[name][a];
+				else:
+					valdict[a]=a;
+					blockvaldict[name][a]=a;
+					blocks[bkc][i]['dest']=blockvaldict[name][a];
+					
+		# update + insert phi
+	for bkc, block in enumerate(blocks):
+		name=block[0]['label'];
+		for phiinsert in phidict[name]:
+			for inflow in phiinsert[2]:
+				phiinsert[1].append(blockvaldict[inflow][phiinsert[0]])
+			phii={
+		        'op': 'phi',
+		        'dest': phiinsert[3],
+		        'type': 'int',
+		        'labels': phiinsert[2],
+		        'args': phiinsert[1],
+		   	 }
+			blocks[bkc].insert(1,phii)
+	sys.stderr.write("**********Function Pass "+str(blocks)+"**********\n");
+				
+	fun['instrs'] = flatten(blocks)
+	
+def out_ssa(fun, livein, liveout,fdom, p,s):
+	done= False;
+	modified = False;
+	blocks = list(form_blocks(fun['instrs']))
+	changes =0;
+	upphi={}
+	for block in blocks:
+		name=block[0]['label'];
+		upphi[name]=[];
+		
+	for bkc, block in enumerate(blocks):
+		name=block[0]['label'];
+		for i, inst in enumerate(block):
+			if 'op' in inst and inst['op'] is 'phi':
+				dest= inst['dest'];
+			
+				for ct,lbl in enumerate(inst['labels']):
+					dat=(dest,inst['args'][ct])
+					upphi[lbl].append(dat);
+	for bkc, block in enumerate(blocks):
+		name=block[0]['label'];
+		for phich in upphi[name]:
+			iid={
+                        'op': 'id',
+                        'type': 'int',
+                        'args': [phich[1]],
+                        'dest': phich[0],
+                   	};
+			#sys.stderr.write("IID is: "+str(iid)+"**********\n");
+			blocks[bkc].insert(-1,iid)	
+	if True:
+		for bkc, block in enumerate(blocks):
+			name=block[0]['label'];
+			delet=set();
+			for i, inst in enumerate(block):
+				if 'op' in inst and inst['op'] is 'phi':
+					delet.add(i);
+		
+			block[:]=[inst for i,  inst in enumerate(block) 
+				if i not in delet]
+	sys.stderr.write("**********Function Pass "+str(blocks)+"**********\n");
+	fun['instrs'] = flatten(blocks)
+
 def opt():
 	# Code structure adopted from examples, orgrinally located from sampsyo/bril.  
 	bril = json.load(sys.stdin)
@@ -479,7 +729,7 @@ def opt():
 	# DF
 	sys.stderr.write("DF :\n")
 	for fun in bril['functions']:		
-		fb=fun_block(form_blocks(fun["instrs"]));
+		fb=fun_block(fun);
 		#defined
 		sys.stderr.write("Defined :\n")
 		in_,out=fb.slover(True,union,definedtrans)
@@ -493,6 +743,46 @@ def opt():
 		    sys.stderr.write('{}:\n'.format(block))
 		    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
 		    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
+		dom=fb.dom();
+		sys.stderr.write("Dom list:"+str(dom)+"\n");
+		strict_dom=fb.strict_dom();
+		sys.stderr.write("Strict Dom list:"+str(strict_dom)+"\n");
+		fdom=fb.forntier_dom();
+		sys.stderr.write("Frontier Dom list:"+str(fdom)+"\n");
+	
+	sys.stderr.write("SSA: \n")
+	for fun in bril['functions']:
+		done=False;
+		passct=0;
+		if True:
+			done= True;
+			passct=passct+1;
+			sys.stderr.write("**********Function Pass "+str("TO SSA")+"**********\n");
+			fb=fun_block(fun);
+			in_,out=fb.slover(False,union,livetrans);
+			fdom=fb.forntier_dom();
+			p,s=fb.edge();
+			to_ssa(fun,in_, out,fdom,p,s)
+			#done= done & ssa(fun)
+			#sys.stderr.write(str(done))
+	sys.stderr.write("out SSA: \n")
+	for fun in bril['functions']:
+		done=False;
+		passct=0;
+		if True:
+			done= True;
+			passct=passct+1;
+			sys.stderr.write("**********Function Pass "+str("OUT SSA")+"**********\n");
+			fb=fun_block(fun);
+			in_,out=fb.slover(False,union,livetrans);
+			fdom=fb.forntier_dom();
+			p,s=fb.edge();
+			out_ssa(fun,in_, out,fdom,p,s)
+	for fun in bril['functions']:
+		done=False;
+		passct=0;
+		if True:
+			pass
 	
 	json.dump(bril, sys.stdout,indent=2, sort_keys=True)
 
