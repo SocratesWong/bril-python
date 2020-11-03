@@ -57,7 +57,7 @@ def removeifexist(s,value):
 	if value in s:
 		s.remove(value);
 
-def dce(fun):
+def dce(fun,livevar):
 	done= False;
 	modified = False;
 	blocks = list(form_blocks(fun['instrs']))
@@ -91,7 +91,7 @@ def dce(fun):
 							#sys.stderr.write("\n");
 							done=False;
 							changes=changes+1;
-							#sys.stderr.write("overwritten deleating {},{}\n".format(db,di));
+							sys.stderr.write("overwritten deleating {},{}\n".format(db,di));
 					lookback[dest]=(b,i);
 					unused.add(dest)
 					
@@ -99,12 +99,14 @@ def dce(fun):
 				#if dest in unused
 		
 		
-		for i in unused:
-			db, di = lookback[i]
-			delet[db].add(di);
-			done=False;
-			changes=changes+1;
-			#sys.stderr.write(i+" unused deleating {},{}\n".format(db,di));
+		for i in unused: 
+				db, di = lookback[i]
+				if 'label' in blocks[db][0]:
+					if i not in livevar[blocks[db][0]['label']]:
+						delet[db].add(di);
+						done=False;
+						changes=changes+1;
+						sys.stderr.write(i+" unused deleating {},{}\n".format(db,di));
 		for b,block in enumerate(blocks):
 			block[:]=[inst for i,  inst in enumerate(block) 
 				if i not in delet[b]]
@@ -222,6 +224,7 @@ class lvn_entery:
 					pass;
 		else:
 			pass
+callnum=100;
 class Lvn_scope_manager:
 	
 	
@@ -240,10 +243,14 @@ class Lvn_scope_manager:
 			return newent.conical;
 		else:
 			return self.lookuptable[(var,)].conical;
-			
+	
 	def genkey(self, op, carg1=None,carg2=None,value=None):
+		global callnum
 		if op =='call':
-			raise ValueError('No key to gen for Call All keys should be unique for function calls')	
+			#raise ValueError('No key to gen for Call All keys should be unique for function calls')	
+			rt= ('call',callnum);
+			callnum=callnum+1;
+			return rt;
 		elif op =='const':
 			return ('const',carg1);
 		elif op =='id':
@@ -280,10 +287,11 @@ class Lvn_scope_manager:
 					self.lookuptable[(dest,)]=self.lookuptable[key];
 			elif instr['op'] =='call':
 				if 'args' in instr:
-					instr['args'] = [lookupvar(n) for n in arglist];  #conical replacement
+					instr['args'] = [self.lookupvar(n) for n in arglist];  #conical replacement
 				newent= lvn_entery(self,instr['dest'],instr['op'],lastwrite);
 				self.lookuptable[newent.conical]=newent;
-				self.lookuptable[key].addalais(dest)  #conical replacement
+				key = self.genkey(instr['op']);
+				self.lookuptable[key]=newent;
 				self.lookuptable[(dest,)]=self.lookuptable[key];
 			elif instr['op'] =='const':
 				carg1=instr['value'];
@@ -320,7 +328,7 @@ class Lvn_scope_manager:
 		
 		
 		
-def lvn(fun):
+def lvn(fun,livevar):
 	done= False;
 	modified = False;
 	blocks = list(form_blocks(fun['instrs']))
@@ -350,7 +358,7 @@ def lvn(fun):
 	fun['instrs'] = flatten(blocks)
 	sys.stderr.write("LVN pass done Running DCE to clean up: \n");
 	#return changes == 0;
-	return dce(fun)
+	return dce(fun,livevar)
 def union(list):
 	out=set()
 	for i in list:
@@ -777,7 +785,7 @@ def licm(fun, livein, liveout,fdom, p,s,fb):
 								linst={
 								'op': instr['op'],
 								'dest': instr['dest']+'.'+str(licmnum),
-								'type': 'int',
+								'type': instr['type'],
 								'args': list(arglist),
 							   	}
 							   		
@@ -883,7 +891,9 @@ def opt():
 	# Code structure adopted from examples, orgrinally located from sampsyo/bril.  
 	bril = json.load(sys.stdin)
 	change = True;
-	while change:
+	cttt=5 
+	while change and cttt>0:
+		cttt=cttt-1
 		change = False;
 		if True:
 			for fun in bril['functions']:
@@ -893,8 +903,11 @@ def opt():
 					done= True;
 					passct=passct+1;
 					sys.stderr.write("**********Function Pass "+str(passct)+"**********\n");
-					done= done and dce(fun);
-					done= done and lvn(fun);
+					fb=fun_block(fun);
+					#sys.stderr.write("Liveness :\n")
+					in_,out=fb.slover(False,union,livetrans)
+					done= done and dce(fun,out);
+					done= done and lvn(fun,out);
 					#sys.stderr.write(str(done))
 		# DF
 		sys.stderr.write("DF :\n")
