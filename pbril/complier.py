@@ -3,6 +3,8 @@ import json
 import itertools
 from collections import OrderedDict
 
+licmnum=1000;	
+
 #Imported code from sampsyo/bril.
 TERMINATORS = 'br', 'jmp', 'ret'
 def flatten(ll):
@@ -186,12 +188,12 @@ class lvn_entery:
 			#del instr['args']
 			instr.update({
 				'op':'id',
-				'args':self.conical
+				'args':[self.conical]
 			});
 		elif instr['op'] =='id':	
 			instr.update({
 				'op':'id',
-				'args':self.conical
+				'args':[self.conical]
 			});
 		elif instr['op'] in ("add", "mul", 'sub','div','gt','lt','ge','le'):
 			instr.update({
@@ -268,6 +270,7 @@ class Lvn_scope_manager:
 				carg1=self.lookupvar(arglist[0])
 				key = self.genkey(instr['op'],carg1);
 				#lvnentery=genkey(instr['op'],carg1)
+				sys.stderr.write("args is : "+str(instr['args'])+"**********\n");
 				instr['args'][0]=carg1; #name update, conical replacement
 				if key not in self.lookuptable.keys():
 					raise ValueError("We got an BIG PROBLEM ID on undefined value!!!!");
@@ -292,7 +295,7 @@ class Lvn_scope_manager:
 					self.lookuptable[key]=newent;
 					
 				else:
-					lookuptable[key].updatecp(self, instr);
+					self.lookuptable[key].updatecp(self, instr);
 				self.lookuptable[key].addalais(dest);
 				self.lookuptable[(dest,)]=self.lookuptable[key];
 			elif instr['op']  in ("add", "mul", 'sub','div','gt','lt','ge','le'):
@@ -451,17 +454,20 @@ class fun_block():
 		for ct,value in enumerate(self.dict.items()):
 			name,block =value;
 			try:
-				next, _ = self.dict.items()[ct+1]
+				next, _ =list( self.dict.items())[ct+1]
 			except:
+				sys.stderr.write("Name failed to fetch next block["+name+"] is index "+ str(ct)+"\n")
+				#next, _ = self.dict.items()[ct+1]
 				next= None;
 			#if next:
 			#	print("next is "+ next+"\n")
 			#else:
 			#	print("next is none"+"\n")
-			for s in succ(block[-1],next):
-				#sys.stderr.write("Adding value"+s+"\n");
-				appendifexist(suc,name,s);
-				appendifexist(pred,s,name);
+			if block:
+				for s in succ(block[-1],next):
+					#sys.stderr.write("Adding value"+s+"\n");
+					appendifexist(suc,name,s);
+					appendifexist(pred,s,name);
 		return pred,suc;
 	def edgelist(self):
 		pass
@@ -656,7 +662,14 @@ def to_ssa(fun, livein, liveout,fdom, p,s):
 		name=block[0]['label'];
 		for phiinsert in phidict[name]:
 			for inflow in phiinsert[2]:
-				phiinsert[1].append(blockvaldict[inflow][phiinsert[0]])
+				sys.stderr.write("Inflow "+str(inflow)+" Insert "+str(phiinsert[0])+"\n");
+				try:
+					#sys.stderr.write("blockvaldict "+str(blockvaldict[inflow][phiinsert[0]])+"\n");
+					phiinsert[1].append(blockvaldict[inflow][phiinsert[0]])
+				except:
+					sys.stderr.write("Fallback\n")
+					#phiinsert[1].append(inflow)
+					pass
 			phii={
 		        'op': 'phi',
 		        'dest': phiinsert[3],
@@ -665,9 +678,160 @@ def to_ssa(fun, livein, liveout,fdom, p,s):
 		        'args': phiinsert[1],
 		   	 }
 			blocks[bkc].insert(1,phii)
-	sys.stderr.write("**********Function Pass "+str(blocks)+"**********\n");
+	#sys.stderr.write("**********Function Pass "+str(blocks)+"**********\n");
 				
 	fun['instrs'] = flatten(blocks)
+
+def licm(fun, livein, liveout,fdom, p,s,fb):
+	done= False;
+	modified = False;
+	blocks = list(form_blocks(fun['instrs']))
+	changes =0;
+	blockvaldict={}
+	valdict={}
+	phidict={}
+	loopdict={}
+	for block in blocks:
+		name=block[0]['label'];
+		phidict[name]=[];
+		#loopdict[name]={};
+	for bkc, block in enumerate(blocks):
+		name=block[0]['label'];
+		loopstart=name;
+		loopmembers={name}
+		if len(s[name]) !=2:
+			continue;
+		loopout=s[name][1];
+		loopstack=[];
+		loopstack.extend(s[name])
+		isloop=True;
+		while loopstack:
+			cname= loopstack.pop();
+			if cname is loopout:
+				continue
+			loopmembers.add(cname);
+			if not s[cname]:
+				isloop= False;
+			
+			loopstack.extend(set(s[cname])-loopmembers)
+		if isloop:
+			#sys.stderr.write("Loop deteched at "+loopstart+" with members"+str(loopmembers)+"exit at "+loopout+"\n");
+			loopdict[loopstart]=(bkc,loopstart,loopmembers,loopout);
+
+		else:
+			loopstart=name;
+			loopmembers={name}
+			if len(s[name]) !=2:
+				continue;
+			loopout=s[name][0];
+			loopstack=[];
+			loopstack.extend(s[name])
+			isloop=True;
+			while loopstack:
+				cname= loopstack.pop();
+				if cname is loopout:
+					continue
+				loopmembers.add(cname);
+				if not s[cname]:
+					isloop= False;
+			
+				loopstack.extend(set(s[cname])-loopmembers)
+			if isloop:
+				#sys.stderr.write("Loop deteched at "+loopstart+" with members"+str(loopmembers)+"exit at "+loopout+"\n");
+				loopdict[loopstart]=(bkc,loopstart,loopmembers,loopout);
+				#loopconstant=
+	#sys.stderr.write("loopdict "+str(loopdict)+"\n");
+	#newinst=[];
+	global licmnum
+	for t in loopdict:
+		if not modified:
+			newinst=[];
+			
+			#sys.stderr.write("Loop deteched at "+str(t)+"\n");
+			bn,cloopstart,cloopmem,cloopout= loopdict[t]
+			sys.stderr.write("Loop deteched at "+cloopstart+" with members"+str(cloopmem)+"exit at "+cloopout+"\n");
+			invarient = livein[cloopstart]	
+			killunion= set();
+			linst={
+			'label': cloopstart
+		   	}
+							   	
+			newinst.append(linst)
+			for lm in cloopmem:
+				g,k,u= gku(fb.dict[lm]);
+				sys.stderr.write("Gen set at  "+lm+" with members"+str(g)+"\n");
+				invarient=invarient-g;
+				killunion=killunion.union(g);
+			sys.stderr.write("Invarient List at   "+lm+" with members"+str(invarient)+"\n");
+			#sys.stderr.write("killunion List at   "+lm+" with members"+str(killunion)+"\n");
+			
+			for block in blocks:
+				name=block[0]['label'];
+				if name in cloopmem:
+					for instr in block:
+						#sys.stderr.write("instr   "+str(instr)+"\n");
+						if 'op' in instr and instr['op'] in ("add", "mul", 'sub','div','gt','lt','ge','le'):
+							arglist=instr.get('args', []);
+							if arglist[0] in invarient and arglist[1] in invarient:
+								sys.stderr.write("Moving code in   "+lm+" with instr"+str(instr)+"\n");
+								linst={
+								'op': instr['op'],
+								'dest': instr['dest']+'.'+str(licmnum),
+								'type': 'int',
+								'args': list(arglist),
+							   	}
+							   		
+								instr['op']= 'id';
+								del instr['args']
+								instr['args']= [instr['dest']+'.'+str(licmnum),];
+								licmnum=licmnum+1;
+								newinst.append(linst);
+								modified= True;
+			#label rename+ insertblocks
+			if modified:
+				for block in blocks:
+					name=block[0]['label'];
+					if name in cloopmem:
+						for instr in block:
+							if 'labels' in instr:
+								instr['labels']= [lbl if  lbl != cloopstart else cloopstart+".old" for lbl in instr['labels']];
+							
+							if 'label' in instr:
+								if name == cloopstart:
+									instr['label']=instr['label']+".old";
+				for block in blocks:
+					name=block[0]['label'];	
+					if name == cloopstart+".old":
+					#	block[:]= newinst.extend(block)	;	
+						for i in reversed(newinst):
+							block.insert(0, i)
+					
+	# update + insert phi
+	if False:
+		for bkc, block in enumerate(blocks):
+			name=block[0]['label'];
+			for phiinsert in phidict[name]:
+				for inflow in phiinsert[2]:
+					sys.stderr.write("Inflow "+str(inflow)+" Insert "+str(phiinsert[0])+"\n");
+					try:
+						#sys.stderr.write("blockvaldict "+str(blockvaldict[inflow][phiinsert[0]])+"\n");
+						phiinsert[1].append(blockvaldict[inflow][phiinsert[0]])
+					except:
+						sys.stderr.write("Fallback\n")
+						#phiinsert[1].append(inflow)
+						pass
+				phii={
+				'op': 'phi',
+				'dest': phiinsert[3],
+				'type': 'int',
+				'labels': phiinsert[2],
+				'args': phiinsert[1],
+			   	 }
+				blocks[bkc].insert(1,phii)
+	#sys.stderr.write("**********Function Pass "+str(blocks)+"**********\n");
+				
+	fun['instrs'] = flatten(blocks)
+	return modified;
 	
 def out_ssa(fun, livein, liveout,fdom, p,s):
 	done= False;
@@ -698,7 +862,10 @@ def out_ssa(fun, livein, liveout,fdom, p,s):
                         'dest': phich[0],
                    	};
 			#sys.stderr.write("IID is: "+str(iid)+"**********\n");
-			blocks[bkc].insert(-1,iid)	
+			if blocks[bkc][-1]['op'] in TERMINATORS:
+				blocks[bkc].insert(-1,iid)
+			else: 
+				blocks[bkc].insert(len(blocks[bkc]),iid)	
 	if True:
 		for bkc, block in enumerate(blocks):
 			name=block[0]['label'];
@@ -715,69 +882,94 @@ def out_ssa(fun, livein, liveout,fdom, p,s):
 def opt():
 	# Code structure adopted from examples, orgrinally located from sampsyo/bril.  
 	bril = json.load(sys.stdin)
+	change = True;
+	while change:
+		change = False;
+		if True:
+			for fun in bril['functions']:
+				done=False;
+				passct=0;
+				while not done:
+					done= True;
+					passct=passct+1;
+					sys.stderr.write("**********Function Pass "+str(passct)+"**********\n");
+					done= done and dce(fun);
+					done= done and lvn(fun);
+					#sys.stderr.write(str(done))
+		# DF
+		sys.stderr.write("DF :\n")
+		for fun in bril['functions']:		
+			fb=fun_block(fun);
+			#defined
+			sys.stderr.write("Defined :\n")
+			in_,out=fb.slover(True,union,definedtrans)
+			for block in fb.dict:
+			    sys.stderr.write('{}:\n'.format(block))
+			    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
+			    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
+			sys.stderr.write("Liveness :\n")
+			in_,out=fb.slover(False,union,livetrans)
+			for block in fb.dict:
+			    sys.stderr.write('{}:\n'.format(block))
+			    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
+			    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
+			dom=fb.dom();
+			sys.stderr.write("Dom list:"+str(dom)+"\n");
+			strict_dom=fb.strict_dom();
+			sys.stderr.write("Strict Dom list:"+str(strict_dom)+"\n");
+			fdom=fb.forntier_dom();
+			sys.stderr.write("Frontier Dom list:"+str(fdom)+"\n");
+		if True:
+			sys.stderr.write("licm: \n")
+			for fun in bril['functions']:
+				done=False;
+				passct=0;
+				if True:
+					done= True;
+					passct=passct+1;
+					sys.stderr.write("**********Function Pass "+str(fun['name'])+"licm**********\n");
+					fb=fun_block(fun);
+					in_,out=fb.slover(False,union,livetrans);
+					fdom=fb.forntier_dom();
+					p,s=fb.edge();
+					sys.stderr.write("Pre: "+str(p)+"\n");
+					sys.stderr.write("Suc: "+str(s)+"\n");
+					change=licm(fun,in_, out,fdom,p,s,fb)
+					#done= done & ssa(fun)
+					#sys.stderr.write(str(done))
+					
 	if False:
+		sys.stderr.write("SSA: \n")
 		for fun in bril['functions']:
 			done=False;
 			passct=0;
-			while not done:
+			if True:
 				done= True;
 				passct=passct+1;
-				sys.stderr.write("**********Function Pass "+str(passct)+"**********\n");
-				done= done and dce(fun);
-				done= done and lvn(fun);
+				sys.stderr.write("**********Function Pass "+str(fun['name'])+"TO SSA**********\n");
+				fb=fun_block(fun);
+				in_,out=fb.slover(False,union,livetrans);
+				fdom=fb.forntier_dom();
+				p,s=fb.edge();
+				sys.stderr.write("Pre: "+str(p)+"\n");
+				sys.stderr.write("Suc: "+str(s)+"\n");
+				to_ssa(fun,in_, out,fdom,p,s)
+				#done= done & ssa(fun)
 				#sys.stderr.write(str(done))
-	# DF
-	sys.stderr.write("DF :\n")
-	for fun in bril['functions']:		
-		fb=fun_block(fun);
-		#defined
-		sys.stderr.write("Defined :\n")
-		in_,out=fb.slover(True,union,definedtrans)
-		for block in fb.dict:
-		    sys.stderr.write('{}:\n'.format(block))
-		    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
-		    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
-		sys.stderr.write("Liveness :\n")
-		in_,out=fb.slover(False,union,livetrans)
-		for block in fb.dict:
-		    sys.stderr.write('{}:\n'.format(block))
-		    sys.stderr.write('  in: '+ fmt(in_[block])+"\n")
-		    sys.stderr.write('  out:'+ fmt(out[block])+"\n")
-		dom=fb.dom();
-		sys.stderr.write("Dom list:"+str(dom)+"\n");
-		strict_dom=fb.strict_dom();
-		sys.stderr.write("Strict Dom list:"+str(strict_dom)+"\n");
-		fdom=fb.forntier_dom();
-		sys.stderr.write("Frontier Dom list:"+str(fdom)+"\n");
-	
-	sys.stderr.write("SSA: \n")
-	for fun in bril['functions']:
-		done=False;
-		passct=0;
-		if True:
-			done= True;
-			passct=passct+1;
-			sys.stderr.write("**********Function Pass "+str("TO SSA")+"**********\n");
-			fb=fun_block(fun);
-			in_,out=fb.slover(False,union,livetrans);
-			fdom=fb.forntier_dom();
-			p,s=fb.edge();
-			to_ssa(fun,in_, out,fdom,p,s)
-			#done= done & ssa(fun)
-			#sys.stderr.write(str(done))
-	sys.stderr.write("out SSA: \n")
-	for fun in bril['functions']:
-		done=False;
-		passct=0;
-		if True:
-			done= True;
-			passct=passct+1;
-			sys.stderr.write("**********Function Pass "+str("OUT SSA")+"**********\n");
-			fb=fun_block(fun);
-			in_,out=fb.slover(False,union,livetrans);
-			fdom=fb.forntier_dom();
-			p,s=fb.edge();
-			out_ssa(fun,in_, out,fdom,p,s)
+	if False:
+		sys.stderr.write("out SSA: \n")
+		for fun in bril['functions']:
+			done=False;
+			passct=0;
+			if True:
+				done= True;
+				passct=passct+1;
+				sys.stderr.write("**********Function Pass "+str("OUT SSA")+"**********\n");
+				fb=fun_block(fun);
+				in_,out=fb.slover(False,union,livetrans);
+				fdom=fb.forntier_dom();
+				p,s=fb.edge();
+				out_ssa(fun,in_, out,fdom,p,s)
 	for fun in bril['functions']:
 		done=False;
 		passct=0;

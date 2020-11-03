@@ -1,0 +1,21 @@
+# ARGS: dom
+@main {
+.entry:
+  x: int = const 0;
+  i: int = const 0;
+  one: int = const 1;
+
+.loop:
+  max: int = const 10;
+  cond: bool = lt i max;
+  br cond .body .exit;
+
+.body:
+  b: int = add one one;
+  x: int = add x b;
+  i: int = add i one;
+  jmp .loop;
+
+.exit:
+  print x;
+}
