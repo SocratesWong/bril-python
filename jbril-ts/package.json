@@ -1,0 +1,17 @@
+{
+  "name": "jbril",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "ts2bril": "build/ts2bril.js",
+    "jbrili": "build/jbrili.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod a+x build/ts2bril.js build/jbrili.js"
+  },
+  "dependencies": {
+    "@types/node": "^11.13.5",
+    "typescript": "^3.4.3"
+  }
+}
